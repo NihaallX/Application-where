@@ -1,7 +1,7 @@
 name: Backfill Job Emails
 
 # Runs daily at 1:00 AM IST (19:30 UTC)
-# Also has a manual trigger button in the GitHub Actions UI
+# Also triggerable manually from the Actions tab
 on:
   schedule:
     - cron: '30 19 * * *'
@@ -11,6 +11,15 @@ on:
         description: 'Reason for manual run'
         required: false
         default: 'manual'
+      backfill_after_date:
+        description: 'Only process emails after this date (YYYY/MM/DD)'
+        required: false
+        default: '2025/06/01'
+
+# Prevent two backfill runs from overlapping
+concurrency:
+  group: backfill
+  cancel-in-progress: false  # let the running job finish; queue the next
 
 jobs:
   backfill:
@@ -23,6 +32,12 @@ jobs:
         working-directory: backend-job-sync
 
     steps:
+      - name: Log run reason
+        run: |
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Reason:  ${{ github.event.inputs.reason || 'scheduled' }}"
+          echo "After date: ${{ github.event.inputs.backfill_after_date || '2025/06/01' }}"
+
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -45,6 +60,18 @@ jobs:
           GOOGLE_CLIENT_ID:       ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET:   ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN:   ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          BACKFILL_AFTER_DATE:    '2025/06/01'
+          BACKFILL_AFTER_DATE:    ${{ github.event.inputs.backfill_after_date || '2025/06/01' }}
           SYNC_MODE_ONLY:         'false'
         run: npm run backfill
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Backfill job FAILED. Check the logs above for details."
+          echo "Last run: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "**Status: FAILED** — review logs and re-run manually if needed." >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary on success
+        if: success()
+        run: |
+          echo "**Backfill run completed successfully** at $(date -u)" >> $GITHUB_STEP_SUMMARY

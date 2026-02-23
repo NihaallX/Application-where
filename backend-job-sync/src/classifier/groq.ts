@@ -23,9 +23,10 @@ let currentKeyIndex = 0;
 let groq = new Groq({ apiKey: keyPool[currentKeyIndex] });
 const ENV_PATH = path.join(process.cwd(), '.env');
 
-// Set when every key has hit a daily rate limit — signals the process to exit cleanly
+// Set when every key has hit a daily rate limit — caller should stop and let cron resume tomorrow
 let allKeysExhaustedFlag = false;
 export function isAllKeysExhausted(): boolean { return allKeysExhaustedFlag; }
+export function resetAllKeysExhaustedFlag(): void { allKeysExhaustedFlag = false; }
 
 function currentKeyLabel(): string {
     return `key${currentKeyIndex + 1}`;
@@ -72,6 +73,7 @@ function checkForKeyUpdate(): void {
         for (const k of freshKeys) {
             if (!keyPool.includes(k)) {
                 keyPool.push(k);
+                lastCallTimes.push(0); // keep lastCallTimes in sync with keyPool
                 added++;
             }
         }
@@ -121,9 +123,10 @@ Other rules:
 - Return ONLY the JSON object, nothing else`;
 
 // --- Rate limiter for Groq free tier ---
-// Each key gets its own timer so we fully utilise all 3 keys in parallel (3× throughput)
+// Each key gets its own timer so we fully utilise all keys in parallel
 const MIN_DELAY_MS = 2100; // ~28 req/min per key (safe below 30 RPM limit)
-const lastCallTimes: number[] = [0, 0, 0];
+// Grows with keyPool — indexed by key position
+const lastCallTimes: number[] = keyPool.map(() => 0);
 
 async function throttle(): Promise<void> {
     const now = Date.now();
@@ -277,7 +280,7 @@ export async function classifyEmail(email: EmailMessage): Promise<Classification
                 }
                 // All keys exhausted for the day — exit cleanly so cron can restart tomorrow
                 allKeysExhaustedFlag = true;
-                logger.warn('All 3 Groq keys are daily-rate-limited. Stopping to resume via cron tomorrow.', { emailId: email.id });
+                logger.warn(`All ${keyPool.length} Groq keys are daily-rate-limited. Stopping to resume via cron tomorrow.`, { emailId: email.id });
                 return null;
             }
             logger.error('Groq API error', { emailId: email.id, error: err.message, attempt, key: currentKeyLabel() });
