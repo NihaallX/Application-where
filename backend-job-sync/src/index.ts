@@ -4,9 +4,9 @@ import { config } from './config';
 import { getAuthenticatedClient } from './gmail/auth';
 import { fetchAllEmails, fetchNewEmails, EmailMessage } from './gmail/fetcher';
 import { isJobRelated } from './classifier/prefilter';
-import { classifyEmail, ClassificationResult } from './classifier/groq';
+import { classifyEmail, ClassificationResult, isAllKeysExhausted } from './classifier/groq';
 import { initializeSchema } from './db/schema';
-import { getProcessedGmailIds, getLastProcessedDate, upsertJob, insertEmail, getStats } from './db/operations';
+import { getProcessedGmailIds, getLastProcessedDate, upsertJob, insertEmail, getStats, loadResumeStateFromDB, saveResumeStateToDB, clearResumeStateFromDB } from './db/operations';
 import { closePool } from './db/neon';
 import { logger, initSyncStatus, updateSyncStatus, clearLogFile } from './utils/logger';
 
@@ -25,12 +25,22 @@ interface ResumeState {
     updated_at: string;
 }
 
-function loadResumeState(): ResumeState | null {
+async function loadResumeState(): Promise<ResumeState | null> {
+    const mode = isBackfill ? 'backfill' : 'sync';
+    // 1. Try DB first (works in GitHub Actions and locally)
+    try {
+        const dbState = await loadResumeStateFromDB(mode);
+        if (dbState) {
+            logger.info('Resumed from DB state', { processedSoFar: dbState.emails_processed, updatedAt: dbState.updated_at });
+            return dbState;
+        }
+    } catch { /* fall through to file */ }
+    // 2. Fall back to local file (backwards compat for existing local runs)
     try {
         if (fs.existsSync(RESUME_FILE)) {
             const data = JSON.parse(fs.readFileSync(RESUME_FILE, 'utf-8'));
-            if (data.mode === (isBackfill ? 'backfill' : 'sync')) {
-                logger.info('Found resume state', { processedSoFar: data.emails_processed, updatedAt: data.updated_at });
+            if (data.mode === mode) {
+                logger.info('Resumed from local file state', { processedSoFar: data.emails_processed, updatedAt: data.updated_at });
                 return data;
             }
         }
@@ -38,11 +48,15 @@ function loadResumeState(): ResumeState | null {
     return null;
 }
 
-function saveResumeState(pageToken: string, emailsProcessed: number): void {
+async function saveResumeState(pageToken: string, emailsProcessed: number): Promise<void> {
+    const mode = isBackfill ? 'backfill' : 'sync';
+    // Write to DB (for GitHub Actions)
+    await saveResumeStateToDB(mode, pageToken, emailsProcessed);
+    // Also write local file (for Task Scheduler watcher + Monitor page)
     try {
         if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
         const state: ResumeState = {
-            mode: isBackfill ? 'backfill' : 'sync',
+            mode,
             last_page_token: pageToken,
             emails_processed: emailsProcessed,
             updated_at: new Date().toISOString(),
@@ -51,7 +65,9 @@ function saveResumeState(pageToken: string, emailsProcessed: number): void {
     } catch { /* ignore */ }
 }
 
-function clearResumeState(): void {
+async function clearResumeState(): Promise<void> {
+    const mode = isBackfill ? 'backfill' : 'sync';
+    await clearResumeStateFromDB(mode);
     try { if (fs.existsSync(RESUME_FILE)) fs.unlinkSync(RESUME_FILE); } catch { /* ignore */ }
 }
 
@@ -81,7 +97,7 @@ async function main() {
     initSyncStatus(mode);
 
     // Check for resume state
-    const resumeState = loadResumeState();
+    const resumeState = await loadResumeState();
     if (resumeState) {
         logger.info(`Resuming from previous run — ${resumeState.emails_processed} emails already processed`);
     }
@@ -118,7 +134,7 @@ async function main() {
             // Save resume state after each batch
             if (pageToken) {
                 lastPageToken = pageToken;
-                saveResumeState(pageToken, totalProcessed);
+                await saveResumeState(pageToken, totalProcessed);
             }
 
             updateSyncStatus({
@@ -148,6 +164,13 @@ async function main() {
                     totalFailed++;
                     updateSyncStatus({ errors: totalFailed });
                     logger.warn('Classification failed, skipping', { gmailId: email.id, subject: email.subject });
+                    // All Groq keys are daily-exhausted — save progress and exit cleanly
+                    if (isAllKeysExhausted()) {
+                        logger.info('All Groq API keys exhausted for today. Progress saved. Cron will resume tomorrow.');
+                        updateSyncStatus({ is_running: false });
+                        process.emit('SIGTERM' as any);
+                        return;
+                    }
                     continue;
                 }
 
@@ -200,7 +223,7 @@ async function main() {
         }
 
         // Run complete — clear resume state
-        clearResumeState();
+        await clearResumeState();
 
         // Print summary
         const stats = await getStats();
