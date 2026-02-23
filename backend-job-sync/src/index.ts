@@ -4,7 +4,7 @@ import { config } from './config';
 import { getAuthenticatedClient } from './gmail/auth';
 import { fetchAllEmails, fetchNewEmails, EmailMessage } from './gmail/fetcher';
 import { isJobRelated } from './classifier/prefilter';
-import { classifyEmail, ClassificationResult, isAllKeysExhausted } from './classifier/groq';
+import { classifyEmail, ClassificationResult, isAllKeysExhausted, resetAllKeysExhaustedFlag } from './classifier/groq';
 import { initializeSchema } from './db/schema';
 import { getProcessedGmailIds, getLastProcessedDate, upsertJob, insertEmail, getStats, loadResumeStateFromDB, saveResumeStateToDB, clearResumeStateFromDB } from './db/operations';
 import { closePool } from './db/neon';
@@ -34,7 +34,9 @@ async function loadResumeState(): Promise<ResumeState | null> {
             logger.info('Resumed from DB state', { processedSoFar: dbState.emails_processed, updatedAt: dbState.updated_at });
             return dbState;
         }
-    } catch { /* fall through to file */ }
+    } catch (err: any) {
+        logger.warn('DB resume state load failed, falling back to local file', { error: err.message });
+    }
     // 2. Fall back to local file (backwards compat for existing local runs)
     try {
         if (fs.existsSync(RESUME_FILE)) {
@@ -44,15 +46,21 @@ async function loadResumeState(): Promise<ResumeState | null> {
                 return data;
             }
         }
-    } catch { /* ignore */ }
+    } catch (err: any) {
+        logger.warn('Local resume file load failed', { error: err.message });
+    }
     return null;
 }
 
 async function saveResumeState(pageToken: string, emailsProcessed: number): Promise<void> {
     const mode = isBackfill ? 'backfill' : 'sync';
-    // Write to DB (for GitHub Actions)
-    await saveResumeStateToDB(mode, pageToken, emailsProcessed);
-    // Also write local file (for Task Scheduler watcher + Monitor page)
+    // Write to DB (primary — used by GitHub Actions to resume across runs)
+    try {
+        await saveResumeStateToDB(mode, pageToken, emailsProcessed);
+    } catch (err: any) {
+        logger.error('CRITICAL: DB resume state save failed — progress may be lost on next cold start', { error: err.message });
+    }
+    // Also write local file (secondary — used by Task Scheduler watcher + Monitor page)
     try {
         if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
         const state: ResumeState = {
@@ -62,30 +70,47 @@ async function saveResumeState(pageToken: string, emailsProcessed: number): Prom
             updated_at: new Date().toISOString(),
         };
         fs.writeFileSync(RESUME_FILE, JSON.stringify(state, null, 2));
-    } catch { /* ignore */ }
+    } catch (err: any) {
+        logger.warn('Local resume file write failed (non-critical)', { error: err.message });
+    }
 }
 
 async function clearResumeState(): Promise<void> {
     const mode = isBackfill ? 'backfill' : 'sync';
-    await clearResumeStateFromDB(mode);
-    try { if (fs.existsSync(RESUME_FILE)) fs.unlinkSync(RESUME_FILE); } catch { /* ignore */ }
+    // Run both independently so a DB failure does not prevent local file cleanup
+    try {
+        await clearResumeStateFromDB(mode);
+    } catch (err: any) {
+        logger.warn('DB resume state clear failed', { error: err.message });
+    }
+    try {
+        if (fs.existsSync(RESUME_FILE)) fs.unlinkSync(RESUME_FILE);
+    } catch (err: any) {
+        logger.warn('Local resume file delete failed', { error: err.message });
+    }
 }
 
 // --- Graceful shutdown ---
 let isShuttingDown = false;
+let _triggerShutdown: ((reason: string) => Promise<void>) | null = null;
+
+/** Call this from anywhere inside main() to cleanly stop the run. */
+async function triggerShutdown(reason: string): Promise<void> {
+    if (_triggerShutdown) await _triggerShutdown(reason);
+}
 
 function setupGracefulShutdown(cleanup: () => Promise<void>): void {
-    const shutdown = async (signal: string) => {
+    const shutdown = async (reason: string) => {
         if (isShuttingDown) return;
         isShuttingDown = true;
-        logger.info(`Received ${signal} — saving progress and shutting down gracefully...`);
+        logger.info(`Shutting down: ${reason}`);
         updateSyncStatus({ is_running: false });
         await cleanup();
         process.exit(0);
     };
-
-    process.on('SIGINT', () => shutdown('SIGINT'));
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    _triggerShutdown = shutdown;
+    process.on('SIGINT', () => shutdown('SIGINT received'));
+    process.on('SIGTERM', () => shutdown('SIGTERM received'));
 }
 
 async function main() {
@@ -95,6 +120,9 @@ async function main() {
     // Initialize status tracker and clear old logs
     clearLogFile();
     initSyncStatus(mode);
+
+    // Reset key exhaustion flag at the start of every run
+    resetAllKeysExhaustedFlag();
 
     // Check for resume state
     const resumeState = await loadResumeState();
@@ -164,11 +192,10 @@ async function main() {
                     totalFailed++;
                     updateSyncStatus({ errors: totalFailed });
                     logger.warn('Classification failed, skipping', { gmailId: email.id, subject: email.subject });
-                    // All Groq keys are daily-exhausted — save progress and exit cleanly
+                    // All Groq keys are daily-exhausted — invoke shutdown directly (no process.emit hack)
                     if (isAllKeysExhausted()) {
                         logger.info('All Groq API keys exhausted for today. Progress saved. Cron will resume tomorrow.');
-                        updateSyncStatus({ is_running: false });
-                        process.emit('SIGTERM' as any);
+                        await triggerShutdown('All Groq API keys exhausted for today');
                         return;
                     }
                     continue;
