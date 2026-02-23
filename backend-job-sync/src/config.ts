@@ -22,7 +22,7 @@ export const config = {
     },
     syncModeOnly: process.env.SYNC_MODE_ONLY === 'true',
     // Backfill will only process emails after this date
-    backfillAfterDate: process.env.BACKFILL_AFTER_DATE || '2025/06/01',
+    backfillAfterDate: process.env.BACKFILL_AFTER_DATE || '2024/01/01',
 };
 
 function requireEnv(key: string): string {
