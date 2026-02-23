@@ -22,3 +22,10 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Next.js build output
+job-dashboard-next/.next/
+job-dashboard-next/node_modules/
+
+# Stale scaffold copies
+7MYhjafoKo0-1771860101441/
