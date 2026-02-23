@@ -32,14 +32,14 @@ jobs:
         working-directory: backend-job-sync
 
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - name: Log run reason
         run: |
           echo "Trigger: ${{ github.event_name }}"
           echo "Reason:  ${{ github.event.inputs.reason || 'scheduled' }}"
-          echo "After date: ${{ github.event.inputs.backfill_after_date || '2025/06/01' }}"
-
-      - name: Checkout repo
-        uses: actions/checkout@v4
+          echo "After date: ${{ github.event.inputs.backfill_after_date || '2024/01/01' }}"
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
