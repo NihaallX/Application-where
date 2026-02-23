@@ -14,7 +14,7 @@ on:
       backfill_after_date:
         description: 'Only process emails after this date (YYYY/MM/DD)'
         required: false
-        default: '2025/06/01'
+        default: '2024/01/01'
 
 # Prevent two backfill runs from overlapping
 concurrency:
@@ -60,7 +60,7 @@ jobs:
           GOOGLE_CLIENT_ID:       ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET:   ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN:   ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          BACKFILL_AFTER_DATE:    ${{ github.event.inputs.backfill_after_date || '2025/06/01' }}
+          BACKFILL_AFTER_DATE:    ${{ github.event.inputs.backfill_after_date || '2024/01/01' }}
           SYNC_MODE_ONLY:         'false'
         run: npm run backfill
 
