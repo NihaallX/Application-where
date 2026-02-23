@@ -28,13 +28,25 @@ Gmail inbox scanner + Groq LLM classifier + Neon Postgres storage for personal j
    - Fetches only emails newer than last processed date
    - Uses Gmail query prefilter for job-related terms
 
-## GitHub Actions
+## GitHub Actions (Automated Backfill)
 
-After backfill is complete:
-1. Push this repo to GitHub
-2. Add these repository secrets: `DATABASE_URL`, `GROQ_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
-3. The workflow runs every Sunday at midnight UTC
-4. You can also trigger it manually from the Actions tab
+The workflow at `.github/workflows/backfill.yml` runs the backfill automatically every night at **1:00 AM IST** until all emails are processed. Progress is persisted in NeonDB (`backfill_state` table) so each run resumes exactly where the last one stopped.
+
+**Required repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|---|---|
+| `DATABASE_URL` | NeonDB connection string |
+| `GROQ_API_KEY` | Groq key 1 |
+| `GROQ_API_KEY_2` | Groq key 2 |
+| `GROQ_API_KEY_3` | Groq key 3 |
+| `GOOGLE_CLIENT_ID` | Google OAuth2 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth2 client secret |
+| `GOOGLE_REFRESH_TOKEN` | Google OAuth2 refresh token |
+
+You can also trigger a run manually from the **Actions** tab → **Backfill Job Emails** → **Run workflow**.
+
+Once backfill is fully complete, set `SYNC_MODE_ONLY=true` in `.env` and switch to `npm run sync` for daily incremental syncs.
 
 ## Architecture
 
