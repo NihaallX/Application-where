@@ -23,6 +23,10 @@ let currentKeyIndex = 0;
 let groq = new Groq({ apiKey: keyPool[currentKeyIndex] });
 const ENV_PATH = path.join(process.cwd(), '.env');
 
+// Set when every key has hit a daily rate limit — signals the process to exit cleanly
+let allKeysExhaustedFlag = false;
+export function isAllKeysExhausted(): boolean { return allKeysExhaustedFlag; }
+
 function currentKeyLabel(): string {
     return `key${currentKeyIndex + 1}`;
 }
@@ -271,14 +275,10 @@ export async function classifyEmail(email: EmailMessage): Promise<Classification
                     // Don't increment attempt — retry immediately with new key
                     continue;
                 }
-                // All keys exhausted — wait before retrying
-                const waitSec = 60;
-                logger.warn(`All keys rate-limited, waiting ${waitSec}s...`, { emailId: email.id });
-                await new Promise((r) => setTimeout(r, waitSec * 1000));
-                // Reset to key 1 after waiting in case limits reset
-                currentKeyIndex = 0;
-                groq = new Groq({ apiKey: keyPool[0] });
-                continue;
+                // All keys exhausted for the day — exit cleanly so cron can restart tomorrow
+                allKeysExhaustedFlag = true;
+                logger.warn('All 3 Groq keys are daily-rate-limited. Stopping to resume via cron tomorrow.', { emailId: email.id });
+                return null;
             }
             logger.error('Groq API error', { emailId: email.id, error: err.message, attempt, key: currentKeyLabel() });
             if (attempt < 3) continue;

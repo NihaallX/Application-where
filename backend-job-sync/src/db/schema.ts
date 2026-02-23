@@ -42,6 +42,13 @@ export async function initializeSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_jobs_company_role ON jobs(company, role);
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(current_status);
     CREATE INDEX IF NOT EXISTS idx_emails_category ON emails(category);
+
+    CREATE TABLE IF NOT EXISTS backfill_state (
+      mode TEXT PRIMARY KEY,
+      last_page_token TEXT NOT NULL DEFAULT '',
+      emails_processed INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
     logger.info('Database schema initialized');

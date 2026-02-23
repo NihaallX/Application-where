@@ -267,6 +267,56 @@ export async function insertEmail(
 /**
  * Get summary stats from the database.
  */
+// ── DB-persisted resume state (used by GitHub Actions cron) ─────────────────
+
+interface ResumeStateDB {
+    mode: string;
+    last_page_token: string;
+    emails_processed: number;
+    updated_at: string;
+}
+
+export async function loadResumeStateFromDB(mode: string): Promise<ResumeStateDB | null> {
+    try {
+        const result = await query('SELECT * FROM backfill_state WHERE mode = $1', [mode]);
+        if (result.rows.length === 0) return null;
+        const row = result.rows[0];
+        if (!row.last_page_token) return null;
+        return {
+            mode: row.mode,
+            last_page_token: row.last_page_token,
+            emails_processed: Number(row.emails_processed),
+            updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+        };
+    } catch (err: any) {
+        logger.warn('Could not load resume state from DB', { error: err.message });
+        return null;
+    }
+}
+
+export async function saveResumeStateToDB(mode: string, pageToken: string, emailsProcessed: number): Promise<void> {
+    try {
+        await query(`
+            INSERT INTO backfill_state (mode, last_page_token, emails_processed, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (mode) DO UPDATE SET
+                last_page_token = EXCLUDED.last_page_token,
+                emails_processed = EXCLUDED.emails_processed,
+                updated_at = NOW()
+        `, [mode, pageToken, emailsProcessed]);
+    } catch (err: any) {
+        logger.warn('Could not save resume state to DB', { error: err.message });
+    }
+}
+
+export async function clearResumeStateFromDB(mode: string): Promise<void> {
+    try {
+        await query('DELETE FROM backfill_state WHERE mode = $1', [mode]);
+    } catch (err: any) {
+        logger.warn('Could not clear resume state from DB', { error: err.message });
+    }
+}
+
 export async function getStats(): Promise<Record<string, number>> {
     const jobsResult = await query(`
     SELECT current_status, COUNT(*)::int as count FROM jobs GROUP BY current_status
