@@ -497,7 +497,7 @@ export function MainLayout() {
     <div className="relative h-screen w-full bg-black text-white overflow-hidden">
       <Header />
       <div className="h-full overflow-y-auto no-scrollbar">
-        <main className="flex gap-6 p-6 pt-24 min-h-full">
+        <main className="flex gap-6 p-4 md:p-6 pt-20 md:pt-24 pb-24 md:pb-6 min-h-full">
           <Sidebar active={active} setActive={id => { setActive(id); setStatusFilter(null) }} />
           <div className="flex-1 flex flex-col gap-6 min-w-0">
             {renderContent()}
