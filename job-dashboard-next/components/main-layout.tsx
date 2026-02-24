@@ -267,7 +267,7 @@ function MonitorView() {
                 </div>
               </div>
               <div className="bg-black rounded-full h-2 overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                <div className="h-full rounded-full transition-[width,background-color]" style={{ width: `${pct}%`, backgroundColor: barColor }} />
               </div>
               {pct >= 90 && <p className="text-[#F87171] text-xs font-medium">⚠ Approaching daily limit</p>}
             </div>
@@ -297,7 +297,7 @@ function MonitorView() {
                   </div>
                 </div>
                 <div className="bg-[#1A1A1A] rounded-full h-1.5 overflow-hidden" style={{ opacity: isActive ? 1 : 0.3 }}>
-                  <div className="h-full rounded-full transition-all" style={{ width: isActive ? `${pct}%` : '0%', backgroundColor: barColor }} />
+                  <div className="h-full rounded-full transition-[width,background-color]" style={{ width: isActive ? `${pct}%` : '0%', backgroundColor: barColor }} />
                 </div>
               </div>
             )

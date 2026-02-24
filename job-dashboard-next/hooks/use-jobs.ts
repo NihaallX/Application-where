@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 export interface Job {
   id: string
@@ -46,13 +46,16 @@ export function useJobs() {
   const [emails, setEmails] = useState<Email[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasLoadedRef = useRef(false)
   const [filters, setFilters] = useState<Filters>({
     company: '', job_type: '', work_mode: '', source_platform: '',
   })
 
   const fetchJobs = useCallback(async () => {
     try {
-      setLoading(true)
+      // Only show loading skeleton on first fetch; subsequent refetches keep
+      // showing stale data so there's no flash after status / notes updates
+      if (!hasLoadedRef.current) setLoading(true)
       const params = new URLSearchParams()
       if (filters.company) params.set('company', filters.company)
       if (filters.job_type) params.set('job_type', filters.job_type)
@@ -68,6 +71,7 @@ export function useJobs() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
+      hasLoadedRef.current = true
       setLoading(false)
     }
   }, [filters])
@@ -126,13 +130,13 @@ export function useJobs() {
     }
   }
 
-  // Filter options derived from all jobs (unfiltered)
-  const filterOptions = {
+  // Filter options derived from all jobs (unfiltered) — memoised to avoid recomputing every render
+  const filterOptions = useMemo(() => ({
     companies: [...new Set(allJobs.map(j => j.company))].filter(Boolean).sort(),
     jobTypes: [...new Set(allJobs.map(j => j.job_type))].filter(Boolean).sort(),
     workModes: [...new Set(allJobs.map(j => j.work_mode))].filter(Boolean).sort(),
     platforms: [...new Set(allJobs.map(j => j.source_platform))].filter(Boolean).sort(),
-  }
+  }), [allJobs])
 
   return {
     jobs: allJobs,

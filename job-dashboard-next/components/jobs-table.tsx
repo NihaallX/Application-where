@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronsUpDown, Search, Download, RotateCcw } from 'lucide-react'
 import type { Job } from '@/hooks/use-jobs'
 import { StatusEditor } from '@/components/status-editor'
@@ -91,6 +91,8 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [reclassifyFeedback, setReclassifyFeedback] = useState<Record<string, string>>({})
   const [reclassifyLoading, setReclassifyLoading] = useState<Record<string, boolean>>({})
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 50
 
   const filtered = jobs
     .filter(j => {
@@ -103,6 +105,14 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
       if (sortField === 'company') return (a.company ?? '').localeCompare(b.company ?? '')
       return new Date(b.last_update_date).getTime() - new Date(a.last_update_date).getTime()
     })
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  // Reset to page 1 when filters/search change would be handled via key, instead clamp:
+  const safePage = Math.min(page, totalPages)
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+  // Reset to page 1 whenever search or status filter changes
+  useEffect(() => { setPage(1) }, [search, activeStatusFilter])
 
   async function handleReclassify(e: React.MouseEvent, job: Job) {
     e.stopPropagation()
@@ -168,7 +178,7 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
               <tr className="text-[#919191] text-sm">
                 <th className="pb-4 text-left font-medium pl-2">
                   <button
-                    onClick={() => setSortField('company')}
+                    onClick={() => { setSortField('company'); setPage(1) }}
                     className={`flex items-center gap-1 hover:text-white transition-colors ${sortField === 'company' ? 'text-white' : ''}`}
                   >
                     Company <ChevronsUpDown className="h-4 w-4" />
@@ -179,7 +189,7 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
                 <th className="pb-4 text-right font-medium">Type</th>
                 <th className="pb-4 text-right font-medium pr-2">
                   <button
-                    onClick={() => setSortField('last_update_date')}
+                    onClick={() => { setSortField('last_update_date'); setPage(1) }}
                     className={`flex items-center gap-1 ml-auto hover:text-white transition-colors ${sortField === 'last_update_date' ? 'text-white' : ''}`}
                   >
                     Date <ChevronsUpDown className="h-4 w-4" />
@@ -188,7 +198,7 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
               </tr>
             </thead>
             <tbody>
-              {filtered.map(job => {
+              {paginated.map(job => {
                 const color = STATUS_COLOR[job.current_status] ?? 'text-[#919191]'
                 const dot = STATUS_DOT[job.current_status] ?? 'bg-[#919191]'
                 const label = STATUS_LABEL[job.current_status] ?? job.current_status
@@ -255,6 +265,32 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
         {filtered.length === 0 && (
           <div className="text-center py-12 text-[#919191]">
             No jobs found{search ? ` matching "${search}"` : ''}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-[#222]">
+            <span className="text-[#919191] text-xs">
+              {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                className="px-3 py-1.5 rounded-lg text-xs border border-[#333] text-[#919191] hover:text-white hover:border-[#555] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Prev
+              </button>
+              <span className="text-[#919191] text-xs px-2">{safePage} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+                className="px-3 py-1.5 rounded-lg text-xs border border-[#333] text-[#919191] hover:text-white hover:border-[#555] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </div>
