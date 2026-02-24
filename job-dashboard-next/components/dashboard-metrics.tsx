@@ -60,7 +60,7 @@ export function DashboardMetrics({ jobs, loading, activeFilter, onFilter }: Prop
             <button
               key={card.label}
               onClick={() => onFilter(isActive ? null : card.filter)}
-              className={`flex flex-col gap-1 text-left rounded-xl px-3 py-2 -mx-3 -my-2 transition-all ${
+              className={`flex flex-col gap-1 text-left rounded-xl px-3 py-2 -mx-3 -my-2 transition-colors ${
                 isActive
                   ? `ring-1 ${card.ring} bg-white/5`
                   : 'hover:bg-white/5'

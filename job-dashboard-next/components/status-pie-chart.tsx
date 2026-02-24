@@ -1,6 +1,6 @@
 "use client"
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Job } from '@/hooks/use-jobs'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -73,7 +73,7 @@ export function StatusPieChart({ jobs, loading }: Props) {
   return (
     <div className="bg-[#0D0D0D] border border-[#222] rounded-2xl p-6 flex flex-col gap-4">
       <h2 className="text-white font-bold text-base">Status Breakdown</h2>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie
             data={data}
@@ -89,15 +89,23 @@ export function StatusPieChart({ jobs, loading }: Props) {
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />
-          <Legend
-            iconType="circle"
-            iconSize={8}
-            formatter={(value: string) => (
-              <span style={{ color: '#919191', fontSize: '12px' }}>{value}</span>
-            )}
-          />
         </PieChart>
       </ResponsiveContainer>
+
+      {/* Custom legend */}
+      <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center">
+        {data.map((entry) => (
+          <div key={entry.name} className="flex items-center gap-1.5">
+            <span
+              className="inline-block rounded-full shrink-0"
+              style={{ width: 8, height: 8, backgroundColor: entry.color }}
+            />
+            <span className="text-[#919191] text-xs font-medium leading-none">
+              {entry.name}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

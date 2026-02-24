@@ -32,21 +32,7 @@ function currentKeyLabel(): string {
     return `key${currentKeyIndex + 1}`;
 }
 
-/**
- * Rotate to the next available key. Returns true if a new key is available.
- */
-function rotateKey(): boolean {
-    const nextIndex = currentKeyIndex + 1;
-    if (nextIndex >= keyPool.length) {
-        logger.warn('All Groq API keys exhausted — no more keys to rotate to');
-        return false;
-    }
-    currentKeyIndex = nextIndex;
-    groq = new Groq({ apiKey: keyPool[currentKeyIndex] });
-    trackKeyRotation(currentKeyIndex);
-    logger.info(`🔑 Rotated to Groq ${currentKeyLabel()} (${keyPool.length - currentKeyIndex - 1} remaining)`);
-    return true;
-}
+// rotateKey() replaced by round-robin selectBestKey() / switchToKey() below
 
 /**
  * Watch .env file for new keys added at runtime and reload the pool.
@@ -74,6 +60,7 @@ function checkForKeyUpdate(): void {
             if (!keyPool.includes(k)) {
                 keyPool.push(k);
                 lastCallTimes.push(0); // keep lastCallTimes in sync with keyPool
+                keyRateLimitedFlags.push(false); // keep flags in sync with keyPool
                 added++;
             }
         }
@@ -127,8 +114,34 @@ Other rules:
 const MIN_DELAY_MS = 2100; // ~28 req/min per key (safe below 30 RPM limit)
 // Grows with keyPool — indexed by key position
 const lastCallTimes: number[] = keyPool.map(() => 0);
+// Tracks which keys have hit their daily rate limit
+const keyRateLimitedFlags: boolean[] = keyPool.map(() => false);
+
+/**
+ * Pick the available key (not daily-rate-limited) with the longest idle time.
+ * Returns -1 if all keys are exhausted.
+ */
+function selectBestKey(): number {
+    const available = keyPool.map((_, i) => i).filter(i => !keyRateLimitedFlags[i]);
+    if (available.length === 0) return -1;
+    return available.reduce((best, i) =>
+        (lastCallTimes[i] ?? 0) < (lastCallTimes[best] ?? 0) ? i : best,
+        available[0],
+    );
+}
+
+function switchToKey(idx: number): void {
+    if (idx === currentKeyIndex) return;
+    currentKeyIndex = idx;
+    groq = new Groq({ apiKey: keyPool[currentKeyIndex] });
+    trackKeyRotation(currentKeyIndex);
+    logger.info(`🔑 Round-robin: switched to Groq ${currentKeyLabel()}`);
+}
 
 async function throttle(): Promise<void> {
+    // Round-robin: always switch to the most-idle available key before waiting
+    const best = selectBestKey();
+    if (best !== -1) switchToKey(best);
     const now = Date.now();
     const last = lastCallTimes[currentKeyIndex] ?? 0;
     const elapsed = now - last;
@@ -272,10 +285,12 @@ export async function classifyEmail(email: EmailMessage): Promise<Classification
         } catch (err: any) {
             if (err.status === 429) {
                 trackKeyRateLimit(currentKeyIndex);
-                logger.warn(`Groq rate limit on ${currentKeyLabel()}, attempting key rotation...`, { emailId: email.id, attempt: attempt + 1 });
+                keyRateLimitedFlags[currentKeyIndex] = true;
+                logger.warn(`Groq rate limit on ${currentKeyLabel()}, trying another key...`, { emailId: email.id, attempt: attempt + 1 });
                 checkForKeyUpdate();
-                if (rotateKey()) {
-                    // Don't increment attempt — retry immediately with new key
+                const best = selectBestKey();
+                if (best !== -1) {
+                    switchToKey(best);
                     continue;
                 }
                 // All keys exhausted for the day — exit cleanly so cron can restart tomorrow
