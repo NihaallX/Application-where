@@ -73,6 +73,10 @@ function MonitorView() {
   const [keyLoading, setKeyLoading] = useState(false)
   const [controlMsg, setControlMsg] = useState('')
   const [controlLoading, setControlLoading] = useState(false)
+  const [otherCount, setOtherCount] = useState<number | null>(null)
+  const [bulkRunning, setBulkRunning] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; changed: number; current: string } | null>(null)
+  const [bulkMsg, setBulkMsg] = useState('')
   const logRef = useRef<HTMLDivElement>(null)
 
   const processAlive = status?.process_alive ?? false
@@ -100,6 +104,7 @@ function MonitorView() {
   useEffect(() => {
     fetchStatus(); fetchLogs()
     fetch('/api/groq-limits').then(r => r.json()).then(setGroqLimits).catch(() => {})
+    fetch('/api/reclassify-bulk').then(r => r.json()).then(d => setOtherCount(d.count ?? null)).catch(() => {})
     const s = setInterval(fetchStatus, 2000)
     const l = setInterval(fetchLogs, 3000)
     return () => { clearInterval(s); clearInterval(l) }
@@ -131,6 +136,40 @@ function MonitorView() {
       fetchStatus()
     } catch (e: unknown) { setControlMsg(`❌ ${String(e)}`) }
     setControlLoading(false)
+  }
+
+  async function handleBulkReclassify() {
+    setBulkRunning(true); setBulkMsg(''); setBulkProgress(null)
+    try {
+      const res = await fetch('/api/reclassify-bulk', { method: 'POST' })
+      if (!res.body) throw new Error('No stream')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          try {
+            const d = JSON.parse(line.slice(5).trim())
+            if (d.type === 'progress' || d.type === 'start') {
+              setBulkProgress({ done: d.done ?? 0, total: d.total ?? 0, changed: d.changed ?? 0, current: d.current ?? '' })
+            } else if (d.type === 'done') {
+              setBulkProgress({ done: d.done, total: d.total, changed: d.changed, current: '' })
+              setBulkMsg(`✅ Done — ${d.changed} of ${d.total} jobs reclassified`)
+              setOtherCount((d.total - d.changed))
+            } else if (d.type === 'error') {
+              setBulkMsg(`❌ ${d.message}`)
+            }
+          } catch { /* ignore parse error */ }
+        }
+      }
+    } catch (e: unknown) { setBulkMsg(`❌ ${String(e)}`) }
+    setBulkRunning(false)
   }
 
   async function handleUpdateKey() {
@@ -212,6 +251,49 @@ function MonitorView() {
         </div>
         {controlMsg && (
           <p className={`text-sm ${controlMsg.startsWith('✅') ? 'text-[#86efac]' : 'text-[#F87171]'}`}>{controlMsg}</p>
+        )}
+      </div>
+
+      {/* Bulk Reclassify */}
+      <div className="bg-[#0D0D0D] border border-[#222] rounded-2xl p-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-white font-bold text-sm">🔁 Bulk Reclassify OTHER Jobs</h2>
+            <p className="text-[#919191] text-xs mt-0.5">
+              {otherCount !== null ? `${otherCount} jobs currently marked OTHER/MISCELLANEOUS` : 'Loading count…'}
+            </p>
+          </div>
+          <button
+            onClick={handleBulkReclassify}
+            disabled={bulkRunning || (otherCount === 0)}
+            className="bg-[#a78bfa]/10 hover:bg-[#a78bfa]/20 border border-[#a78bfa]/30 text-[#a78bfa] text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {bulkRunning ? '⏳ Running…' : '▶ Start'}
+          </button>
+        </div>
+
+        {bulkProgress && (
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between text-xs text-[#919191]">
+              <span className="truncate max-w-[60%] text-[#666]">{bulkProgress.current}</span>
+              <span>
+                <b className="text-white font-mono">{bulkProgress.done}</b>
+                <span className="mx-1">/</span>
+                <b className="text-white font-mono">{bulkProgress.total}</b>
+                <span className="mx-2 text-[#86efac] font-mono">+{bulkProgress.changed} changed</span>
+              </span>
+            </div>
+            <div className="bg-[#1A1A1A] rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[#a78bfa] transition-[width]"
+                style={{ width: bulkProgress.total ? `${(bulkProgress.done / bulkProgress.total) * 100}%` : '0%' }}
+              />
+            </div>
+          </div>
+        )}
+
+        {bulkMsg && (
+          <p className={`text-sm ${bulkMsg.startsWith('✅') ? 'text-[#86efac]' : 'text-[#F87171]'}`}>{bulkMsg}</p>
         )}
       </div>
 
