@@ -140,10 +140,15 @@ function MonitorView() {
 
   async function handleBulkReclassify() {
     setBulkRunning(true); setBulkMsg(''); setBulkProgress(null)
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
     try {
       const res = await fetch('/api/reclassify-bulk', { method: 'POST' })
-      if (!res.body) throw new Error('No stream')
-      const reader = res.body.getReader()
+      if (!res.ok || !res.body) {
+        setBulkMsg(`❌ Request failed: ${res.status}`)
+        setBulkRunning(false)
+        return
+      }
+      reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
       while (true) {
@@ -169,6 +174,7 @@ function MonitorView() {
         }
       }
     } catch (e: unknown) { setBulkMsg(`❌ ${String(e)}`) }
+    finally { reader?.cancel() }
     setBulkRunning(false)
   }
 
@@ -265,7 +271,7 @@ function MonitorView() {
           </div>
           <button
             onClick={handleBulkReclassify}
-            disabled={bulkRunning || (otherCount === 0)}
+            disabled={bulkRunning || otherCount === null || otherCount === 0}
             className="bg-[#a78bfa]/10 hover:bg-[#a78bfa]/20 border border-[#a78bfa]/30 text-[#a78bfa] text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {bulkRunning ? '⏳ Running…' : '▶ Start'}
