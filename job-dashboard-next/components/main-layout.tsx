@@ -12,6 +12,7 @@ import { ReviewPanel } from '@/components/review-panel'
 import { StatusPieChart } from '@/components/status-pie-chart'
 import { CompanyChart } from '@/components/company-chart'
 import { FunnelChart } from '@/components/funnel-chart'
+import { BreakdownBarChart } from '@/components/breakdown-bar-chart'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SyncStatus {
@@ -538,21 +539,72 @@ export function MainLayout() {
           </div>
         )
 
-      case 'analytics':
+      case 'analytics': {
+        const total = jobs.length
+        const interviewed = jobs.filter(j => j.current_status === 'INTERVIEW').length
+        const offered    = jobs.filter(j => j.current_status === 'OFFER').length
+        const rejected   = jobs.filter(j => j.current_status === 'REJECTED').length
+        const active     = jobs.filter(j => !['REJECTED','OTHER','MISCELLANEOUS'].includes(j.current_status)).length
+
+        const pct = (n: number) => total ? `${((n / total) * 100).toFixed(1)}%` : '—'
+
+        const workModeData = ['REMOTE','HYBRID','ONSITE','UNKNOWN']
+          .map(m => ({ name: m.charAt(0) + m.slice(1).toLowerCase(), count: jobs.filter(j => j.work_mode === m).length }))
+          .filter(d => d.count > 0)
+
+        const jobTypeData = ['INTERNSHIP','FULL_TIME','CONTRACT','UNKNOWN']
+          .map(t => ({ name: t === 'FULL_TIME' ? 'Full-time' : t.charAt(0) + t.slice(1).toLowerCase(), count: jobs.filter(j => j.job_type === t).length }))
+          .filter(d => d.count > 0)
+
+        const platformData = Object.entries(
+          jobs.reduce<Record<string, number>>((acc, j) => {
+            const p = j.source_platform || 'unknown'
+            acc[p] = (acc[p] ?? 0) + 1
+            return acc
+          }, {})
+        )
+          .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8)
+
         return (
           <div className="flex flex-col gap-6">
             <div>
               <h1 className="text-white font-bold text-xl mb-1">Analytics</h1>
               <p className="text-[#919191] text-sm">Visual breakdown of your job search pipeline</p>
             </div>
+
+            {/* Conversion stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {([
+                { label: 'Total Tracked',   value: total,       accent: '#e7e7e7' },
+                { label: 'Interview Rate',  value: pct(interviewed), accent: '#60a5fa' },
+                { label: 'Offer Rate',      value: pct(offered),    accent: '#86efac' },
+                { label: 'Active Pipeline', value: active,      accent: '#fbbf24' },
+              ] as { label: string; value: string | number; accent: string }[]).map(({ label, value, accent }) => (
+                <div key={label} className="bg-[#0D0D0D] border border-[#222] rounded-2xl p-5 flex flex-col gap-1">
+                  <span className="text-[#919191] text-xs uppercase tracking-wider">{label}</span>
+                  <span className="font-bold text-2xl" style={{ color: accent }}>{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Charts row 1: funnel + status pie + company */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <FunnelChart jobs={jobs} loading={loading} />
               <StatusPieChart jobs={jobs} loading={loading} />
               <CompanyChart jobs={jobs} loading={loading} />
             </div>
-            <ApplicationsChart timeline={timeline} loading={loading} />
+
+            {/* Charts row 2: work mode + job type + platform */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <BreakdownBarChart title="Work Mode" data={workModeData} loading={loading} color="#60a5fa" />
+              <BreakdownBarChart title="Job Type"  data={jobTypeData}  loading={loading} color="#a78bfa" />
+              <BreakdownBarChart title="Platform"  data={platformData} loading={loading} />
+            </div>
           </div>
         )
+      }
 
       case 'review':
         return (
