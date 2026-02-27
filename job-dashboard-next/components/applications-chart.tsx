@@ -15,8 +15,11 @@ interface Props {
 
 type Period = '1W' | '1M' | '3M' | 'ALL'
 
-function formatLabel(dateStr: string): string {
+function formatLabel(dateStr: string, showYear: boolean): string {
   const d = new Date(dateStr)
+  if (showYear) {
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' })
+  }
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' })
 }
 
@@ -31,9 +34,15 @@ export function ApplicationsChart({ timeline, loading }: Props) {
     const cutoff = new Date(now)
     cutoff.setDate(cutoff.getDate() - days)
 
-    return timeline
-      .filter(p => new Date(p.date) >= cutoff)
-      .map(p => ({ date: formatLabel(p.date), count: Number(p.count) }))
+    const filtered = timeline.filter(p => new Date(p.date) >= cutoff)
+    const years = new Set(filtered.map(p => new Date(p.date).getUTCFullYear()))
+    const showYear = years.size > 1
+
+    return filtered.map(p => ({
+      date: formatLabel(p.date, showYear),
+      rawDate: p.date,
+      count: Number(p.count),
+    }))
   }, [timeline, period])
 
   const maxCount = Math.max(...chartData.map(d => d.count), 1)
@@ -115,7 +124,9 @@ export function ApplicationsChart({ timeline, loading }: Props) {
                     <div className="bg-[#1A1A1A] border border-[#333] px-3 py-2 rounded-lg shadow-xl">
                       <p className="text-white font-medium text-sm">
                         {payload[0].value} application{Number(payload[0].value) !== 1 ? 's' : ''}
-                        <span className="text-gray-400 ml-2">{payload[0].payload.date}</span>
+                      </p>
+                      <p className="text-gray-400 text-xs mt-0.5">
+                        {new Date(payload[0].payload.rawDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}
                       </p>
                     </div>
                   )
