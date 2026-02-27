@@ -1,8 +1,9 @@
 import { neon } from '@neondatabase/serverless'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 
 const VALID = ['APPLIED_CONFIRMATION', 'REJECTED', 'INTERVIEW', 'OFFER', 'RECRUITER_OUTREACH', 'APPLICATION_VIEWED', 'OTHER']
+const GROQ_TIMEOUT_MS = 30_000
 
 const PROMPT = `You are a job email classifier. Analyze the email and return ONLY a valid JSON object.
 {
@@ -53,7 +54,7 @@ function buildPool() {
         temperature: 0.1,
         max_tokens: 200,
         response_format: { type: 'json_object' },
-      })
+      }, { timeout: GROQ_TIMEOUT_MS })
       return res.choices[0]?.message?.content ?? null
     } catch (err: any) {
       if (err?.status === 429) {
@@ -68,7 +69,16 @@ function buildPool() {
   return { call }
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // Optional auth gate — set BULK_SECRET in env to require a bearer token
+  const secret = process.env.BULK_SECRET
+  if (secret) {
+    const auth = req.headers.get('authorization') ?? ''
+    if (auth !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  }
+
   const sql = neon(process.env.DATABASE_URL!)
   const pool = buildPool()
 
@@ -127,14 +137,23 @@ export async function POST() {
 
           const category: string = VALID.includes(parsed.category) ? parsed.category : 'OTHER'
           const company: string = typeof parsed.company === 'string' ? parsed.company.trim() : ''
+          const confidence: number = typeof parsed.confidence === 'number'
+            ? Math.min(1, Math.max(0, parsed.confidence))
+            : 0.8
 
           if (category !== 'OTHER' && category !== 'MISCELLANEOUS') {
             changed++
-            await sql`UPDATE jobs SET current_status = ${category}, last_update_date = NOW() WHERE id = ${job.id}`
-            await sql`UPDATE emails SET category = ${category}, confidence = ${parsed.confidence ?? 0.8} WHERE job_id = ${job.id}`
+            // Atomic: run both updates in a single transaction
+            const txQueries: ReturnType<typeof sql>[] = [
+              sql`UPDATE jobs SET current_status = ${category}, last_update_date = NOW() WHERE id = ${job.id}`,
+              sql`UPDATE emails SET category = ${category}, confidence = ${confidence} WHERE job_id = ${job.id}`,
+            ]
             if (company && !['unknown', 'unknown company', ''].includes(company.toLowerCase())) {
-              await sql`UPDATE jobs SET company = ${company} WHERE id = ${job.id} AND company IN ('Unknown','unknown','Unknown Company','')`
+              txQueries.push(
+                sql`UPDATE jobs SET company = ${company} WHERE id = ${job.id} AND company IN ('Unknown','unknown','Unknown Company','')`,
+              )
             }
+            await sql.transaction(txQueries)
           }
 
           send(controller, { type: 'progress', done, total, changed, current: email.subject?.slice(0, 60) ?? '…' })
