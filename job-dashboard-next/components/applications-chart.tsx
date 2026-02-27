@@ -15,10 +15,13 @@ interface Props {
 
 type Period = '1W' | '1M' | '3M' | 'ALL'
 
-function formatLabel(dateStr: string, showYear: boolean): string {
+function formatLabel(dateStr: string, includYear: boolean): string {
   const d = new Date(dateStr)
-  if (showYear) {
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' })
+  if (includYear) {
+    // e.g. "Jan '24"
+    const mon = d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })
+    const yr  = String(d.getUTCFullYear()).slice(2)
+    return `${mon} '${yr}`
   }
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' })
 }
@@ -35,11 +38,11 @@ export function ApplicationsChart({ timeline, loading }: Props) {
     cutoff.setDate(cutoff.getDate() - days)
 
     const filtered = timeline.filter(p => new Date(p.date) >= cutoff)
-    const years = new Set(filtered.map(p => new Date(p.date).getUTCFullYear()))
-    const showYear = years.size > 1
+    // Show month+year label for wide views, day+month for short views
+    const includeYear = period === 'ALL' || period === '3M'
 
     return filtered.map(p => ({
-      date: formatLabel(p.date, showYear),
+      date: formatLabel(p.date, includeYear),
       rawDate: p.date,
       count: Number(p.count),
     }))
