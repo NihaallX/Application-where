@@ -143,17 +143,14 @@ export async function POST(req: NextRequest) {
 
           if (category !== 'OTHER' && category !== 'MISCELLANEOUS') {
             changed++
-            // Atomic: run both updates in a single transaction
-            const txQueries: ReturnType<typeof sql>[] = [
-              sql`UPDATE jobs SET current_status = ${category}, last_update_date = NOW() WHERE id = ${job.id}`,
-              sql`UPDATE emails SET category = ${category}, confidence = ${confidence} WHERE job_id = ${job.id}`,
-            ]
-            if (company && !['unknown', 'unknown company', ''].includes(company.toLowerCase())) {
-              txQueries.push(
-                sql`UPDATE jobs SET company = ${company} WHERE id = ${job.id} AND company IN ('Unknown','unknown','Unknown Company','')`,
-              )
-            }
-            await sql.transaction(txQueries)
+            const shouldUpdateCompany = Boolean(company) && !['unknown', 'unknown company', ''].includes(company.toLowerCase())
+            // Neon HTTP driver: transaction() takes a sync fn returning an array of queries
+            await sql.transaction((tx) => [
+              shouldUpdateCompany
+                ? tx`UPDATE jobs SET current_status = ${category}, last_update_date = NOW(), company = CASE WHEN company IN ('Unknown','unknown','Unknown Company','') THEN ${company} ELSE company END WHERE id = ${job.id}`
+                : tx`UPDATE jobs SET current_status = ${category}, last_update_date = NOW() WHERE id = ${job.id}`,
+              tx`UPDATE emails SET category = ${category}, confidence = ${confidence} WHERE job_id = ${job.id}`,
+            ])
           }
 
           send(controller, { type: 'progress', done, total, changed, current: email.subject?.slice(0, 60) ?? '…' })
