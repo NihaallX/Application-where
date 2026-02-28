@@ -1,13 +1,17 @@
 import { neon } from '@neondatabase/serverless';
 import { NextRequest, NextResponse } from 'next/server';
+import { getDbUserId } from '@/lib/auth-db';
 
 export async function GET(req: NextRequest) {
   try {
+    const dbUserId = await getDbUserId();
+    if (!dbUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const sql = neon(process.env.DATABASE_URL!);
     const { searchParams } = new URL(req.url);
 
-    const conditions: string[] = [];
-    const values: string[] = [];
+    const conditions: string[] = [`user_id = $1`];
+    const values: (string | number)[] = [dbUserId];
 
     if (searchParams.get('company')) {
       values.push(searchParams.get('company')!);
@@ -26,7 +30,7 @@ export async function GET(req: NextRequest) {
       conditions.push(`LOWER(source_platform) = LOWER($${values.length})`);
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const [jobs, timelineRows] = await Promise.all([
       sql(
@@ -39,13 +43,14 @@ export async function GET(req: NextRequest) {
          LIMIT 2000`,
         values
       ),
-      sql`
-        SELECT DATE(first_email_date AT TIME ZONE 'UTC') AS date, COUNT(*)::int AS count
-        FROM jobs
-        WHERE first_email_date IS NOT NULL
-        GROUP BY DATE(first_email_date AT TIME ZONE 'UTC')
-        ORDER BY date
-      `,
+      sql(
+        `SELECT DATE(first_email_date AT TIME ZONE 'UTC') AS date, COUNT(*)::int AS count
+         FROM jobs
+         WHERE user_id = $1 AND first_email_date IS NOT NULL
+         GROUP BY DATE(first_email_date AT TIME ZONE 'UTC')
+         ORDER BY date`,
+        [dbUserId]
+      ),
     ]);
 
     return NextResponse.json({ jobs, timeline: timelineRows });

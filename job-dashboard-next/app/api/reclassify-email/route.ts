@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
+import { getDbUserId } from '@/lib/auth-db';
 
 const PROMPT = `You are a job email classifier. Analyze the email and return ONLY a valid JSON object.
 {
@@ -13,15 +14,18 @@ CRITICAL: category MUST be exactly one of those 7 values. INTERNSHIP is NOT a va
 
 export async function POST(req: NextRequest) {
   try {
+    const dbUserId = await getDbUserId();
+    if (!dbUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { jobId } = await req.json();
     if (!jobId) return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
 
     const sql = neon(process.env.DATABASE_URL!);
 
-    // Get latest email for this job
+    // Get latest email for this job — scoped to user
     const emails = await sql`
       SELECT subject, body_preview, category
-      FROM emails WHERE job_id = ${jobId}
+      FROM emails WHERE job_id = ${jobId} AND user_id = ${dbUserId}
       ORDER BY email_date DESC LIMIT 1
     `;
     if (!emails.length) return NextResponse.json({ error: 'No email found' }, { status: 404 });
@@ -48,15 +52,15 @@ export async function POST(req: NextRequest) {
     const category: string = valid.includes(parsed.category) ? parsed.category : 'OTHER';
     const company: string = parsed.company || '';
 
-    // Update email
-    await sql`UPDATE emails SET category = ${category}, confidence = 1.0 WHERE job_id = ${jobId}`;
+    // Update email — scoped to user
+    await sql`UPDATE emails SET category = ${category}, confidence = 1.0 WHERE job_id = ${jobId} AND user_id = ${dbUserId}`;
 
-    // Update job
+    // Update job — scoped to user
     const updates: Promise<unknown>[] = [
-      sql`UPDATE jobs SET current_status = ${category}, last_update_date = NOW() WHERE id = ${jobId}`,
+      sql`UPDATE jobs SET current_status = ${category}, last_update_date = NOW() WHERE id = ${jobId} AND user_id = ${dbUserId}`,
     ];
     if (company && company !== 'Unknown') {
-      updates.push(sql`UPDATE jobs SET company = ${company} WHERE id = ${jobId} AND company IN ('Unknown', 'unknown', 'Unknown Company')`);
+      updates.push(sql`UPDATE jobs SET company = ${company} WHERE id = ${jobId} AND user_id = ${dbUserId} AND company IN ('Unknown', 'unknown', 'Unknown Company')`);
     }
     await Promise.all(updates);
 
