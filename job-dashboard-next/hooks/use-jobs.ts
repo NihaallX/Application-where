@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 export interface Job {
   id: string
   company: string
+  company_logo_url: string | null;
   role: string
   current_status: string
   job_type: string

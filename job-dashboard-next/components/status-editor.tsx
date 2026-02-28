@@ -10,6 +10,7 @@ const STATUSES = [
   'INTERVIEW',
   'OFFER',
   'REJECTED',
+  'GHOSTED',
   'RECRUITER_OUTREACH',
   'OTHER',
   'MISCELLANEOUS',
@@ -17,13 +18,14 @@ const STATUSES = [
 
 const STATUS_LABEL: Record<string, string> = {
   APPLIED_CONFIRMATION: 'Applied Confirmation',
-  APPLICATION_VIEWED:   'Application Viewed',
-  INTERVIEW:            'Interview',
-  OFFER:                'Offer',
-  REJECTED:             'Rejected',
-  RECRUITER_OUTREACH:   'Recruiter Outreach',
-  OTHER:                'Other',
-  MISCELLANEOUS:        'Miscellaneous',
+  APPLICATION_VIEWED: 'Application Viewed',
+  INTERVIEW: 'Interview',
+  OFFER: 'Offer',
+  REJECTED: 'Rejected',
+  GHOSTED: 'Ghosted',
+  RECRUITER_OUTREACH: 'Recruiter Outreach',
+  OTHER: 'Other',
+  MISCELLANEOUS: 'Miscellaneous',
 }
 
 interface Props {
@@ -37,7 +39,7 @@ function getInterviewCountdown(dateStr: string | null): { text: string; urgent: 
   if (!dateStr) return null
   const now = new Date()
   const ivDate = new Date(dateStr)
-  const diff = Math.ceil((ivDate.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / 86400000)
+  const diff = Math.ceil((ivDate.setHours(0, 0, 0, 0) - now.setHours(0, 0, 0, 0)) / 86400000)
   if (diff < 0) return null
   if (diff === 0) return { text: 'Interview is TODAY!', urgent: true }
   if (diff === 1) return { text: 'Interview is TOMORROW!', urgent: true }
@@ -101,11 +103,10 @@ export function StatusEditor({ job, onClose, onUpdateStatus, onUpdateNotes }: Pr
         {/* Interview countdown banner */}
         {countdown && (
           <div
-            className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${
-              countdown.urgent
+            className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${countdown.urgent
                 ? 'bg-[#60a5fa]/10 border border-[#60a5fa]/30 text-[#60a5fa]'
                 : 'bg-[#1A1A1A] border border-[#333] text-[#aaa]'
-            }`}
+              }`}
           >
             <Calendar className="h-4 w-4 flex-shrink-0" />
             {countdown.text}

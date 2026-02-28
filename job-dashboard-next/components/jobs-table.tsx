@@ -16,36 +16,39 @@ interface Props {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  OFFER:                'text-[#4ADE80]',
-  INTERVIEW:            'text-[#60a5fa]',
+  OFFER: 'text-[#4ADE80]',
+  INTERVIEW: 'text-[#60a5fa]',
   APPLIED_CONFIRMATION: 'text-[#86efac]',
-  APPLICATION_VIEWED:   'text-[#a78bfa]',
-  REJECTED:             'text-[#F87171]',
-  RECRUITER_OUTREACH:   'text-[#fbbf24]',
-  OTHER:                'text-[#919191]',
-  MISCELLANEOUS:        'text-[#919191]',
+  APPLICATION_VIEWED: 'text-[#a78bfa]',
+  REJECTED: 'text-[#F87171]',
+  GHOSTED: 'text-[#9ca3af]',
+  RECRUITER_OUTREACH: 'text-[#fbbf24]',
+  OTHER: 'text-[#919191]',
+  MISCELLANEOUS: 'text-[#919191]',
 }
 
 const STATUS_DOT: Record<string, string> = {
-  OFFER:                'bg-[#4ADE80]',
-  INTERVIEW:            'bg-[#60a5fa]',
+  OFFER: 'bg-[#4ADE80]',
+  INTERVIEW: 'bg-[#60a5fa]',
   APPLIED_CONFIRMATION: 'bg-[#86efac]',
-  APPLICATION_VIEWED:   'bg-[#a78bfa]',
-  REJECTED:             'bg-[#F87171]',
-  RECRUITER_OUTREACH:   'bg-[#fbbf24]',
-  OTHER:                'bg-[#919191]',
-  MISCELLANEOUS:        'bg-[#919191]',
+  APPLICATION_VIEWED: 'bg-[#a78bfa]',
+  REJECTED: 'bg-[#F87171]',
+  GHOSTED: 'bg-[#9ca3af]',
+  RECRUITER_OUTREACH: 'bg-[#fbbf24]',
+  OTHER: 'bg-[#919191]',
+  MISCELLANEOUS: 'bg-[#919191]',
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  OFFER:                'Offer',
-  INTERVIEW:            'Interview',
+  OFFER: 'Offer',
+  INTERVIEW: 'Interview',
   APPLIED_CONFIRMATION: 'Applied',
-  APPLICATION_VIEWED:   'Viewed',
-  REJECTED:             'Rejected',
-  RECRUITER_OUTREACH:   'Recruiter',
-  OTHER:                'Other',
-  MISCELLANEOUS:        'Misc',
+  APPLICATION_VIEWED: 'Viewed',
+  REJECTED: 'Rejected',
+  GHOSTED: 'Ghosted',
+  RECRUITER_OUTREACH: 'Recruiter',
+  OTHER: 'Other',
+  MISCELLANEOUS: 'Misc',
 }
 
 function formatDate(dateStr: string): string {
@@ -61,7 +64,7 @@ function getInterviewCountdown(dateStr: string | null): string | null {
   if (!dateStr) return null
   const now = new Date()
   const iv = new Date(dateStr)
-  const diff = Math.ceil((iv.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / 86400000)
+  const diff = Math.ceil((iv.setHours(0, 0, 0, 0) - now.setHours(0, 0, 0, 0)) / 86400000)
   if (diff < 0) return null
   if (diff === 0) return 'Today'
   if (diff === 1) return 'Tomorrow'
@@ -69,7 +72,7 @@ function getInterviewCountdown(dateStr: string | null): string | null {
 }
 
 function exportCSV(jobs: Job[]) {
-  const headers = ['Company','Role','Status','Job Type','Work Mode','Platform','Date','Interview Date','Notes']
+  const headers = ['Company', 'Role', 'Status', 'Job Type', 'Work Mode', 'Platform', 'Date', 'Interview Date', 'Notes']
   const rows = jobs.map(j => [
     j.company, j.role, j.current_status, j.job_type, j.work_mode,
     j.source_platform, j.last_update_date, j.interview_date ?? '',
@@ -80,7 +83,7 @@ function exportCSV(jobs: Job[]) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `jobs-${new Date().toISOString().slice(0,10)}.csv`
+  a.download = `jobs-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -214,9 +217,22 @@ export function JobsTable({ jobs, loading, onUpdateStatus, onUpdateNotes, onRecl
                     className="group hover:bg-[#1A1A1A] transition-colors cursor-pointer"
                   >
                     <td className="py-3.5 pl-2 rounded-l-xl">
-                      <span className="font-bold text-white truncate max-w-[160px] block">
-                        {job.company || '—'}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        {job.company_logo_url ? (
+                          <img
+                            src={job.company_logo_url}
+                            alt={job.company}
+                            className="w-8 h-8 rounded bg-white object-contain flex-shrink-0 p-0.5"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-[#222] border border-[#333] flex items-center justify-center flex-shrink-0 text-white font-medium text-xs">
+                            {(job.company || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="font-bold text-white truncate max-w-[160px] block">
+                          {job.company || '—'}
+                        </span>
+                      </div>
                     </td>
                     <td className="py-3.5 pr-4">
                       <span className="text-[#919191] text-sm truncate max-w-[200px] block">

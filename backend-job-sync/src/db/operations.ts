@@ -2,12 +2,14 @@ import { query } from './neon';
 import { ClassificationResult } from '../classifier/groq';
 import { EmailMessage } from '../gmail/fetcher';
 import { logger } from '../utils/logger';
+import { enrichCompany } from '../classifier/company-enrichment';
 
 /**
  * Status priority for evolution logic.
  * Higher number = higher priority.
  */
 const STATUS_PRIORITY: Record<string, number> = {
+    GHOSTED: 0,
     RECRUITER_OUTREACH: 1,
     APPLICATION_VIEWED: 2,
     APPLIED_CONFIRMATION: 3,
@@ -151,7 +153,12 @@ export async function upsertJob(
     classification: ClassificationResult,
     emailDate: Date
 ): Promise<string> {
-    const existing = await findExistingJob(classification.company, classification.role);
+    // 1. Enrich the company name with Clearbit for standard deduplication
+    const enriched = await enrichCompany(classification.company);
+    const companyToSave = enriched.name || classification.company || 'Unknown Company';
+    const logoUrl = enriched.logo_url || null;
+
+    const existing = await findExistingJob(companyToSave, classification.role);
 
     if (existing) {
         const updates: string[] = [];
@@ -199,13 +206,19 @@ export async function upsertJob(
             params.push(classification.job_type);
         }
 
+        // Retroactively backfill company_logo_url if it's missing but we just found one
+        if (!existing.company_logo_url && logoUrl) {
+            updates.push(`company_logo_url = $${paramIdx++}`);
+            params.push(logoUrl);
+        }
+
         if (updates.length > 0) {
             params.push(existing.id);
             await query(
                 `UPDATE jobs SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
                 params
             );
-            logger.debug('Updated existing job', { jobId: existing.id, company: classification.company, role: classification.role });
+            logger.debug('Updated existing job', { jobId: existing.id, company: companyToSave, role: classification.role });
         }
 
         return existing.id;
@@ -213,11 +226,12 @@ export async function upsertJob(
 
     // Create new job
     const result = await query(
-        `INSERT INTO jobs (company, role, source_platform, job_type, work_mode, current_status, first_email_date, last_update_date, interview_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO jobs (company, company_logo_url, role, source_platform, job_type, work_mode, current_status, first_email_date, last_update_date, interview_date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
         [
-            classification.company || 'Unknown Company',
+            companyToSave,
+            logoUrl,
             classification.role || 'Unknown Role',
             classification.source_platform || '',
             classification.job_type,
@@ -230,7 +244,7 @@ export async function upsertJob(
     );
 
     const jobId = result.rows[0].id;
-    logger.info('Created new job', { jobId, company: classification.company, role: classification.role, status: classification.category });
+    logger.info('Created new job', { jobId, company: companyToSave, role: classification.role, status: classification.category });
     return jobId;
 }
 

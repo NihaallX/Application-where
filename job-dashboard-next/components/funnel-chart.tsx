@@ -35,7 +35,7 @@ export function FunnelChart({ jobs, loading }: Props) {
   }
 
   const applied = jobs.filter(j =>
-    ['APPLIED_CONFIRMATION', 'APPLICATION_VIEWED', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(j.current_status)
+    ['APPLIED_CONFIRMATION', 'APPLICATION_VIEWED', 'INTERVIEW', 'OFFER', 'REJECTED', 'GHOSTED'].includes(j.current_status)
   ).length
   const interviews = jobs.filter(j => ['INTERVIEW', 'OFFER'].includes(j.current_status)).length
   const offers = jobs.filter(j => j.current_status === 'OFFER').length

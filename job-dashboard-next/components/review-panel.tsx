@@ -8,18 +8,20 @@ const CATEGORIES = [
   'INTERVIEW',
   'OFFER',
   'REJECTED',
+  'GHOSTED',
   'RECRUITER_OUTREACH',
   'OTHER',
 ]
 
 const CAT_LABEL: Record<string, string> = {
   APPLIED_CONFIRMATION: 'Applied Confirmation',
-  APPLICATION_VIEWED:   'Application Viewed',
-  INTERVIEW:            'Interview',
-  OFFER:                'Offer',
-  REJECTED:             'Rejected',
-  RECRUITER_OUTREACH:   'Recruiter Outreach',
-  OTHER:                'Other',
+  APPLICATION_VIEWED: 'Application Viewed',
+  INTERVIEW: 'Interview',
+  OFFER: 'Offer',
+  REJECTED: 'Rejected',
+  GHOSTED: 'Ghosted',
+  RECRUITER_OUTREACH: 'Recruiter Outreach',
+  OTHER: 'Other',
 }
 
 interface Props {

@@ -4,25 +4,27 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Job } from '@/hooks/use-jobs'
 
 const STATUS_COLOR: Record<string, string> = {
-  OFFER:                '#4ADE80',
-  INTERVIEW:            '#60a5fa',
+  OFFER: '#4ADE80',
+  INTERVIEW: '#60a5fa',
   APPLIED_CONFIRMATION: '#86efac',
-  APPLICATION_VIEWED:   '#a78bfa',
-  REJECTED:             '#F87171',
-  RECRUITER_OUTREACH:   '#fbbf24',
-  OTHER:                '#919191',
-  MISCELLANEOUS:        '#6b7280',
+  APPLICATION_VIEWED: '#a78bfa',
+  REJECTED: '#F87171',
+  GHOSTED: '#9ca3af',
+  RECRUITER_OUTREACH: '#fbbf24',
+  OTHER: '#919191',
+  MISCELLANEOUS: '#6b7280',
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  OFFER:                'Offer',
-  INTERVIEW:            'Interview',
+  OFFER: 'Offer',
+  INTERVIEW: 'Interview',
   APPLIED_CONFIRMATION: 'Applied',
-  APPLICATION_VIEWED:   'Viewed',
-  REJECTED:             'Rejected',
-  RECRUITER_OUTREACH:   'Recruiter',
-  OTHER:                'Other',
-  MISCELLANEOUS:        'Misc',
+  APPLICATION_VIEWED: 'Viewed',
+  REJECTED: 'Rejected',
+  GHOSTED: 'Ghosted',
+  RECRUITER_OUTREACH: 'Recruiter',
+  OTHER: 'Other',
+  MISCELLANEOUS: 'Misc',
 }
 
 interface Props {

@@ -104,8 +104,8 @@ function MonitorView() {
 
   useEffect(() => {
     fetchStatus(); fetchLogs()
-    fetch('/api/groq-limits').then(r => r.json()).then(setGroqLimits).catch(() => {})
-    fetch('/api/reclassify-bulk').then(r => r.json()).then(d => setOtherCount(d.count ?? null)).catch(() => {})
+    fetch('/api/groq-limits').then(r => r.json()).then(setGroqLimits).catch(() => { })
+    fetch('/api/reclassify-bulk').then(r => r.json()).then(d => setOtherCount(d.count ?? null)).catch(() => { })
     const s = setInterval(fetchStatus, 2000)
     const l = setInterval(fetchLogs, 3000)
     return () => { clearInterval(s); clearInterval(l) }
@@ -216,11 +216,10 @@ function MonitorView() {
           <h1 className="text-white font-bold text-xl">System Monitor</h1>
           <p className="text-[#919191] text-sm">Live backfill progress, API usage & controls</p>
         </div>
-        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${
-          processAlive ? 'bg-[#86efac]/10 text-[#86efac] border border-[#86efac]/30'
-          : status?.is_running ? 'bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/30'
-          : 'bg-[#333] text-[#919191]'
-        }`}>
+        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${processAlive ? 'bg-[#86efac]/10 text-[#86efac] border border-[#86efac]/30'
+            : status?.is_running ? 'bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/30'
+              : 'bg-[#333] text-[#919191]'
+          }`}>
           {processAlive ? '● RUNNING' : status?.is_running ? '● SYNCING' : '○ IDLE'}
         </span>
       </div>
@@ -322,7 +321,7 @@ function MonitorView() {
             <div>
               <p className="text-[#919191] text-xs uppercase tracking-wider">Resets in</p>
               <p className={`font-mono font-bold text-lg ${countdown < 10 ? 'text-[#F87171]' : countdown < 30 ? 'text-[#fbbf24]' : 'text-[#86efac]'}`}>
-                {String(countdown).padStart(2,'0')}s
+                {String(countdown).padStart(2, '0')}s
               </p>
             </div>
             <div>
@@ -442,12 +441,11 @@ function MonitorView() {
           ) : logs.map((entry, i) => (
             <div key={i} className="flex gap-3 border-b border-[#111] py-1">
               <span className="text-[#555] shrink-0">{entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '--:--:--'}</span>
-              <span className={`shrink-0 font-bold w-10 ${
-                entry.level === 'ERROR' ? 'text-[#F87171]'
-                : entry.level === 'WARN' ? 'text-[#fbbf24]'
-                : entry.level === 'DEBUG' ? 'text-[#a78bfa]'
-                : 'text-[#60a5fa]'
-              }`}>{entry.level}</span>
+              <span className={`shrink-0 font-bold w-10 ${entry.level === 'ERROR' ? 'text-[#F87171]'
+                  : entry.level === 'WARN' ? 'text-[#fbbf24]'
+                    : entry.level === 'DEBUG' ? 'text-[#a78bfa]'
+                      : 'text-[#60a5fa]'
+                }`}>{entry.level}</span>
               <span className="text-[#ccc]">
                 {entry.message}
                 {entry.data && <span className="text-[#555] ml-2">{JSON.stringify(entry.data)}</span>}
@@ -542,17 +540,18 @@ export function MainLayout() {
       case 'analytics': {
         const total = jobs.length
         const interviewed = jobs.filter(j => j.current_status === 'INTERVIEW').length
-        const offered    = jobs.filter(j => j.current_status === 'OFFER').length
-        const rejected   = jobs.filter(j => j.current_status === 'REJECTED').length
-        const active     = jobs.filter(j => !['REJECTED','OTHER','MISCELLANEOUS'].includes(j.current_status)).length
+        const offered = jobs.filter(j => j.current_status === 'OFFER').length
+        const rejected = jobs.filter(j => j.current_status === 'REJECTED').length
+        const ghosted = jobs.filter(j => j.current_status === 'GHOSTED').length
+        const active = jobs.filter(j => !['REJECTED', 'GHOSTED', 'OTHER', 'MISCELLANEOUS'].includes(j.current_status)).length
 
         const pct = (n: number) => total ? `${((n / total) * 100).toFixed(1)}%` : '—'
 
-        const workModeData = ['REMOTE','HYBRID','ONSITE','UNKNOWN']
+        const workModeData = ['REMOTE', 'HYBRID', 'ONSITE', 'UNKNOWN']
           .map(m => ({ name: m.charAt(0) + m.slice(1).toLowerCase(), count: jobs.filter(j => j.work_mode === m).length }))
           .filter(d => d.count > 0)
 
-        const jobTypeData = ['INTERNSHIP','FULL_TIME','CONTRACT','UNKNOWN']
+        const jobTypeData = ['INTERNSHIP', 'FULL_TIME', 'CONTRACT', 'UNKNOWN']
           .map(t => ({ name: t === 'FULL_TIME' ? 'Full-time' : t.charAt(0) + t.slice(1).toLowerCase(), count: jobs.filter(j => j.job_type === t).length }))
           .filter(d => d.count > 0)
 
@@ -577,10 +576,11 @@ export function MainLayout() {
             {/* Conversion stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {([
-                { label: 'Total Tracked',   value: total,       accent: '#e7e7e7' },
-                { label: 'Interview Rate',  value: pct(interviewed), accent: '#60a5fa' },
-                { label: 'Offer Rate',      value: pct(offered),    accent: '#86efac' },
-                { label: 'Active Pipeline', value: active,      accent: '#fbbf24' },
+                { label: 'Total Tracked', value: total, accent: '#e7e7e7' },
+                { label: 'Interview Rate', value: pct(interviewed), accent: '#60a5fa' },
+                { label: 'Offer Rate', value: pct(offered), accent: '#86efac' },
+                { label: 'Ghosted', value: ghosted, accent: '#9ca3af' },
+                { label: 'Active Pipeline', value: active, accent: '#fbbf24' },
               ] as { label: string; value: string | number; accent: string }[]).map(({ label, value, accent }) => (
                 <div key={label} className="bg-[#0D0D0D] border border-[#222] rounded-2xl p-5 flex flex-col gap-1">
                   <span className="text-[#919191] text-xs uppercase tracking-wider">{label}</span>
@@ -599,8 +599,8 @@ export function MainLayout() {
             {/* Charts row 2: work mode + job type + platform */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <BreakdownBarChart title="Work Mode" data={workModeData} loading={loading} color="#60a5fa" />
-              <BreakdownBarChart title="Job Type"  data={jobTypeData}  loading={loading} color="#a78bfa" />
-              <BreakdownBarChart title="Platform"  data={platformData} loading={loading} />
+              <BreakdownBarChart title="Job Type" data={jobTypeData} loading={loading} color="#a78bfa" />
+              <BreakdownBarChart title="Platform" data={platformData} loading={loading} />
             </div>
           </div>
         )

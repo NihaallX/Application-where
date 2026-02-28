@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
     const [jobs, timelineRows] = await Promise.all([
       sql(
-        `SELECT id, company, role, current_status, job_type, work_mode,
+        `SELECT id, company, company_logo_url, role, current_status, job_type, work_mode,
                 first_email_date, source_platform, last_update_date,
                 interview_date, created_at,
                 COALESCE(notes, '') AS notes

@@ -6,14 +6,15 @@ import { logger } from '../utils/logger';
  * Runs on every startup for safety.
  */
 export async function initializeSchema(): Promise<void> {
-    logger.info('Initializing database schema...');
+  logger.info('Initializing database schema...');
 
-    await query(`
+  await query(`
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
     CREATE TABLE IF NOT EXISTS jobs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       company TEXT NOT NULL,
+      company_logo_url TEXT,
       role TEXT NOT NULL,
       source_platform TEXT DEFAULT '',
       job_type TEXT DEFAULT 'UNKNOWN',
@@ -51,5 +52,5 @@ export async function initializeSchema(): Promise<void> {
     );
   `);
 
-    logger.info('Database schema initialized');
+  logger.info('Database schema initialized');
 }
