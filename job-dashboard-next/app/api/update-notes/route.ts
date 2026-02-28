@@ -1,13 +1,17 @@
 import { neon } from '@neondatabase/serverless';
 import { NextRequest, NextResponse } from 'next/server';
+import { getDbUserId } from '@/lib/auth-db';
 
 export async function PATCH(req: NextRequest) {
   try {
+    const dbUserId = await getDbUserId();
+    if (!dbUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { jobId, notes } = await req.json();
     if (!jobId) return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
 
     const sql = neon(process.env.DATABASE_URL!);
-    await sql`UPDATE jobs SET notes = ${notes ?? ''} WHERE id = ${jobId}`;
+    await sql`UPDATE jobs SET notes = ${notes ?? ''} WHERE id = ${jobId} AND user_id = ${dbUserId}`;
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';

@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless'
 import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
+import { getDbUserId } from '@/lib/auth-db'
 
 const VALID = ['APPLIED_CONFIRMATION', 'REJECTED', 'INTERVIEW', 'OFFER', 'RECRUITER_OUTREACH', 'APPLICATION_VIEWED', 'OTHER']
 const GROQ_TIMEOUT_MS = 30_000
@@ -70,14 +71,8 @@ function buildPool() {
 }
 
 export async function POST(req: NextRequest) {
-  // Optional auth gate — set BULK_SECRET in env to require a bearer token
-  const secret = process.env.BULK_SECRET
-  if (secret) {
-    const auth = req.headers.get('authorization') ?? ''
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
+  const dbUserId = await getDbUserId()
+  if (!dbUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sql = neon(process.env.DATABASE_URL!)
   const pool = buildPool()
@@ -93,7 +88,7 @@ export async function POST(req: NextRequest) {
         const jobs = await sql`
           SELECT id, company
           FROM jobs
-          WHERE current_status IN ('OTHER', 'MISCELLANEOUS')
+          WHERE current_status IN ('OTHER', 'MISCELLANEOUS') AND user_id = ${dbUserId}
           ORDER BY created_at DESC
         `
 
@@ -106,7 +101,7 @@ export async function POST(req: NextRequest) {
           // get best email for this job
           const [email] = await sql`
             SELECT subject, body_preview FROM emails
-            WHERE job_id = ${job.id}
+            WHERE job_id = ${job.id} AND user_id = ${dbUserId}
             ORDER BY email_date DESC LIMIT 1
           `
           if (!email) { done++; continue }
@@ -174,9 +169,11 @@ export async function POST(req: NextRequest) {
   })
 }
 
-// Simple GET to count how many OTHER jobs remain
+// Simple GET to count how many OTHER jobs remain for this user
 export async function GET() {
+  const dbUserId = await getDbUserId()
+  if (!dbUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sql = neon(process.env.DATABASE_URL!)
-  const [row] = await sql`SELECT COUNT(*)::int as count FROM jobs WHERE current_status IN ('OTHER','MISCELLANEOUS')`
+  const [row] = await sql`SELECT COUNT(*)::int as count FROM jobs WHERE current_status IN ('OTHER','MISCELLANEOUS') AND user_id = ${dbUserId}`
   return NextResponse.json({ count: row.count })
 }
