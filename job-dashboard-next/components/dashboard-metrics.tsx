@@ -12,10 +12,11 @@ interface Props {
 
 export function DashboardMetrics({ jobs, loading, activeFilter, onFilter }: Props) {
   const total = jobs.length
-  const applied  = jobs.filter(j => ['APPLIED_CONFIRMATION', 'APPLICATION_VIEWED', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(j.current_status)).length
+  const applied = jobs.filter(j => ['APPLIED_CONFIRMATION', 'APPLICATION_VIEWED', 'INTERVIEW', 'OFFER', 'REJECTED', 'GHOSTED'].includes(j.current_status)).length
   const interviews = jobs.filter(j => j.current_status === 'INTERVIEW').length
   const offers = jobs.filter(j => j.current_status === 'OFFER').length
   const rejected = jobs.filter(j => j.current_status === 'REJECTED').length
+  const ghosted = jobs.filter(j => j.current_status === 'GHOSTED').length
   const recruiters = jobs.filter(j => j.current_status === 'RECRUITER_OUTREACH').length
 
   if (loading) {
@@ -31,6 +32,7 @@ export function DashboardMetrics({ jobs, loading, activeFilter, onFilter }: Prop
     { label: 'Interviews', value: interviews, color: 'text-[#60a5fa]', ring: 'ring-[#60a5fa]', filter: 'INTERVIEW' },
     { label: 'Offers', value: offers, color: 'text-[#86efac]', ring: 'ring-[#86efac]', filter: 'OFFER' },
     { label: 'Rejections', value: rejected, color: 'text-[#F87171]', ring: 'ring-[#F87171]', filter: 'REJECTED' },
+    { label: 'Ghosted', value: ghosted, color: 'text-[#9ca3af]', ring: 'ring-[#9ca3af]', filter: 'GHOSTED' },
     { label: 'Recruiters', value: recruiters, color: 'text-[#fbbf24]', ring: 'ring-[#fbbf24]', filter: 'RECRUITER_OUTREACH' },
   ]
 
@@ -60,11 +62,10 @@ export function DashboardMetrics({ jobs, loading, activeFilter, onFilter }: Prop
             <button
               key={card.label}
               onClick={() => onFilter(isActive ? null : card.filter)}
-              className={`flex flex-col gap-1 text-left rounded-xl px-3 py-2 -mx-3 -my-2 transition-colors ${
-                isActive
+              className={`flex flex-col gap-1 text-left rounded-xl px-3 py-2 -mx-3 -my-2 transition-colors ${isActive
                   ? `ring-1 ${card.ring} bg-white/5`
                   : 'hover:bg-white/5'
-              }`}
+                }`}
             >
               <span className="text-gray-400 text-sm">{card.label}</span>
               <span className={`text-2xl md:text-xl lg:text-2xl font-semibold ${card.color}`}>

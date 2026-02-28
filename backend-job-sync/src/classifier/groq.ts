@@ -72,41 +72,79 @@ function checkForKeyUpdate(): void {
     }
 }
 
-const CLASSIFICATION_PROMPT = `You are a job email classifier. Analyze the email and return ONLY a valid JSON object.
+const CLASSIFICATION_PROMPT = `You are a job email classifier for a PERSONAL job search tracker. You are analyzing emails from ONE person's inbox.
 
+Return ONLY a valid JSON object:
 {
   "category": "APPLIED_CONFIRMATION | REJECTED | INTERVIEW | OFFER | RECRUITER_OUTREACH | APPLICATION_VIEWED | OTHER",
   "company": "company name",
-  "role": "job role/title",
+  "role": "job role/title or empty string if no specific role is mentioned",
   "interview_date": "ISO date string or empty string",
   "job_type": "INTERNSHIP | FULL_TIME | CONTRACT | UNKNOWN",
   "work_mode": "REMOTE | ONSITE | HYBRID | UNKNOWN",
-  "source_platform": "linkedin | naukri | indeed | glassdoor | company_website | email | other",
+  "source_platform": "linkedin | naukri | indeed | glassdoor | wellfound | company_website | email | other",
   "confidence": 0.0 to 1.0
 }
 
-CRITICAL — "category" field:
-- MUST be exactly one of: APPLIED_CONFIRMATION, REJECTED, INTERVIEW, OFFER, RECRUITER_OUTREACH, APPLICATION_VIEWED, OTHER
-- INTERNSHIP is NOT a valid category — it is a job_type value only
-- An internship application confirmation → category = "APPLIED_CONFIRMATION", job_type = "INTERNSHIP"
-- An internship interview invite → category = "INTERVIEW", job_type = "INTERNSHIP"
-- Do NOT use INTERNSHIP, FULL_TIME, CONTRACT, or UNKNOWN as a category value, ever
+═══ CATEGORY RULES (READ CAREFULLY) ═══
 
-CRITICAL rules for "company":
-- ALWAYS try to identify the company name. NEVER return an empty string for company.
-- Extract company from these sources (in priority order):
-  1. The email body (e.g. "Thank you for applying to Google", "Your application at Amazon")
-  2. The sender name (e.g. "LinkedIn Job Alerts" → look in body for company, "Naukri.com" → look in body for company)
-  3. The sender email domain (e.g. "careers@microsoft.com" → "Microsoft", "noreply@stripe.com" → "Stripe")
-  4. If a job portal (LinkedIn, Naukri, Indeed) sent the email, the ACTUAL hiring company is in the body, not the portal
-- For job portals: the company is the one HIRING, not LinkedIn/Naukri/Indeed themselves
-- Capitalize the company name properly (e.g. "Google", not "google")
+INTERVIEW — Use ONLY when the user has been PERSONALLY INVITED to an interview, assessment, or screening call.
+  ✅ "We'd like to schedule an interview with you"
+  ✅ "You've been shortlisted for the next round"
+  ✅ "Please complete this coding assessment"
+  ✅ "Your interview is scheduled for March 5th"
+  ❌ NOT job listing emails ("New job: Engineer at X" — this is OTHER)
+  ❌ NOT job digests ("Apply to jobs at X, Y and Z" — this is OTHER)
+  ❌ NOT recruiter outreach ("Urgent Hiring | Data Scientist" — this is RECRUITER_OUTREACH)
+  ❌ NOT hackathon/competition invites — this is OTHER
+
+OFFER — Use ONLY when the user has received a PERSONAL job offer or offer letter.
+  ✅ "We are pleased to offer you the position of..."
+  ✅ "Congratulations! Here is your offer letter"
+  ❌ NOT "We're offering an internship program" — this is OTHER (marketing)
+  ❌ NOT "Top internships of the week matching your profile" — this is OTHER
+  ❌ NOT challenge/competition invites — this is OTHER
+
+APPLIED_CONFIRMATION — The user applied and got a confirmation.
+  ✅ "Thank you for applying to X"
+  ✅ "Application to X successfully submitted"
+  ✅ "We received your application"
+
+REJECTED — The user's application was declined.
+  ✅ "We regret to inform you", "We've decided to move forward with other candidates"
+
+RECRUITER_OUTREACH — A recruiter or company reached out to the user about a role (the user did NOT apply first).
+  ✅ "Urgent Hiring | Data Scientist | Jersey City" (including all reply threads "Re: Urgent Hiring...")
+  ✅ "I came across your profile and wanted to reach out"
+  ✅ "We have an opening that matches your background"
+
+APPLICATION_VIEWED — An employer or recruiter viewed the user's application/resume/profile.
+
+OTHER — EVERYTHING ELSE. This is the DEFAULT when unsure. Use liberally.
+  ✅ Job alert digest emails: "New job: X at Y, and N more matches" (Wellfound)
+  ✅ Job alert digest emails: "Apply to jobs at X, Y and Z" (Indeed)
+  ✅ Job alert digest emails: "artificial intelligence intern: Company - Role and more" (LinkedIn)
+  ✅ Weekly roundups: "Top internships of the week matching your profile"
+  ✅ Internship program marketing: "Join our internship program"
+  ✅ Newsletters, competition invites, hackathons
+  ✅ Orientation or onboarding info for training programs (not real jobs)
+  ✅ Generic "N+ new internships for you" batch notifications
+
+═══ KEY DISTINCTION ═══
+Job DIGEST/ALERT emails list available positions — they are NOT about YOUR application.
+INTERVIEW/OFFER means something happened TO YOU PERSONALLY — you were selected, invited, or offered something.
+If the email is about job LISTINGS or OPPORTUNITIES (not YOUR specific application), use OTHER.
+
+═══ COMPANY RULES ═══
+- Extract the HIRING company, not the portal (LinkedIn/Indeed/Wellfound are platforms, not employers)
+- For job digests listing multiple companies, use the FIRST company mentioned
+- Priority: email body → sender name → sender domain
 - If truly impossible to determine, use "Unknown"
 
-Other rules:
-- Use APPLICATION_VIEWED when an employer or recruiter has viewed/opened your application, resume, or profile
-- For role: extract the specific job title (e.g. "Software Engineer", "Data Analyst Intern")
-- confidence reflects how certain you are this is a job-related email
+═══ OTHER RULES ═══
+- INTERNSHIP/FULL_TIME/CONTRACT are job_type values, NEVER category values
+- confidence: how certain this is about the user's PERSONAL job search activity (not general job listings)
+- For job alert/digest emails: confidence should be LOW (0.2–0.4) since they're not personal
 - Return ONLY the JSON object, nothing else`;
 
 // --- Rate limiter for Groq free tier ---
@@ -180,7 +218,9 @@ function extractCompanyFromSender(from: string): string {
     if (nameMatch) {
         const name = nameMatch[1].trim();
         const genericNames = ['no-reply', 'noreply', 'notifications', 'info', 'admin', 'support', 'careers', 'jobs', 'hiring'];
-        if (!genericNames.some((g) => name.toLowerCase().includes(g)) && name.length > 2) {
+        const isPortalName = portalDomains.some(p => name.toLowerCase().includes(p.replace('.com', '').replace('.co', '')));
+
+        if (!genericNames.some((g) => name.toLowerCase().includes(g)) && !isPortalName && !name.toLowerCase().includes('indeed') && name.length > 2) {
             return name;
         }
     }
@@ -278,7 +318,10 @@ export async function classifyEmail(email: EmailMessage): Promise<Classification
                         }
                     }
                 }
-                return parsed;
+
+                // Post-classification guardrails — catch known misclassification patterns
+                const corrected = applyGuardrails(parsed, email);
+                return corrected;
             }
 
             logger.warn('Invalid JSON from Groq, retrying...', { emailId: email.id, attempt, raw: content.slice(0, 200) });
@@ -305,6 +348,164 @@ export async function classifyEmail(email: EmailMessage): Promise<Classification
 
     logger.error('Failed to classify email after all attempts', { emailId: email.id, subject: email.subject });
     return null;
+}
+
+/**
+ * Post-classification guardrails — heuristic overrides for known LLM misclassification patterns.
+ * These catch cases where the LLM misidentifies job digests/alerts as INTERVIEW or OFFER.
+ */
+function applyGuardrails(result: ClassificationResult, email: EmailMessage): ClassificationResult {
+    const subject = email.subject;
+    const subjectLower = subject.toLowerCase();
+    const fromLower = email.from.toLowerCase();
+    const original = result.category;
+
+    // --- Job digest / alert patterns → force to OTHER ---
+
+    // Wellfound digest: "New job: X at Y, and N more matches"
+    if (/new job:.+and \d+ more match/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // Indeed digest: "Apply to jobs at X, Y and Z"
+    if (/^apply to jobs at /i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // LinkedIn job alert: "search query": Title - Company and more
+    if (/^".+":\s+.+and more$/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // Internshala digests
+    if (/top internships? of the week/i.test(subject) ||
+        /\d+\+?\s+new internships? for\b/i.test(subject) ||
+        /your profile is a perfect match for these.*internships/i.test(subject) ||
+        /matching your profile/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // Indeed job alerts: "N new jobs for X"
+    if (/\d+\s+new jobs?\s+(for|matching)\b/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // Generic job alert pattern
+    if (/job alert/i.test(subject) && result.category !== 'APPLIED_CONFIRMATION') {
+        result.category = 'OTHER';
+    }
+
+    // --- INTERVIEW guardrails ---
+
+    // Recruiter outreach reply threads should not be upgraded to INTERVIEW
+    // "Re: Urgent Hiring | ..." or "Re: Hiring ||" patterns
+    if (result.category === 'INTERVIEW' && /^re:\s*(urgent\s+)?hiring\s*[|│]/i.test(subject)) {
+        result.category = 'RECRUITER_OUTREACH';
+    }
+
+    // "Hiring || Role || Location" patterns (recruiter spam, not interview)
+    if (result.category === 'INTERVIEW' && /^(urgent\s+)?hiring\s*\|{1,2}/i.test(subject)) {
+        result.category = 'RECRUITER_OUTREACH';
+    }
+
+    // "Shortlisted" / "You've Been Shortlisted" → APPLIED_CONFIRMATION (pre-interview step, not interview)
+    if (result.category === 'INTERVIEW' && /shortlist/i.test(subject)) {
+        result.category = 'APPLIED_CONFIRMATION';
+    }
+
+    // "Assignment" / "Next Step" → APPLIED_CONFIRMATION (assessment task, not interview)
+    if (result.category === 'INTERVIEW' && /assignment.*next step|next step.*assignment/i.test(subject)) {
+        result.category = 'APPLIED_CONFIRMATION';
+    }
+
+    // Online assessment invitations → APPLIED_CONFIRMATION
+    if (result.category === 'INTERVIEW' && /online assessment|aptitude (test|assessment)/i.test(subject)) {
+        result.category = 'APPLIED_CONFIRMATION';
+    }
+
+    // "Induction Session" / "Orientation" → OTHER (not interview)
+    if (result.category === 'INTERVIEW' && /induction|orientation/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // Indeed "New Message from X" → APPLIED_CONFIRMATION (employer message, not interview)
+    if (result.category === 'INTERVIEW' && /^new message from /i.test(subject)) {
+        result.category = 'APPLIED_CONFIRMATION';
+    }
+
+    // LinkedIn job alerts: "Title at Company and N more new jobs"
+    if (result.category === 'INTERVIEW' && /\d+\s+more\s+new\s+jobs?/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // "X is hiring a Y" → OTHER (job listing notification, not interview)
+    if (result.category === 'INTERVIEW' && /is hiring a /i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // "Role @ Company" Indeed format → RECRUITER_OUTREACH (job listing)
+    if (result.category === 'INTERVIEW' && /^[A-Za-z][\w\s\/&()\-]+@\s+\w/i.test(subject) && !/interview/i.test(subject)) {
+        result.category = 'RECRUITER_OUTREACH';
+    }
+
+    // LinkedIn format: "query": Company - Title
+    if (result.category === 'INTERVIEW' && /^".+":\s+/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // "Finish your interview" Wellfound platform prompt → OTHER
+    if (result.category === 'INTERVIEW' && /finish your interview/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // --- OFFER guardrails ---
+
+    // "Hiring || Role" is recruiter outreach, not an offer
+    if (result.category === 'OFFER' && /hiring\s*\|{1,2}/i.test(subject)) {
+        result.category = 'RECRUITER_OUTREACH';
+    }
+
+    // Program marketing mistaken for offer
+    if (result.category === 'OFFER' && (
+        /internship program/i.test(subject) ||
+        /virtual internship/i.test(subject) ||
+        /challenge\s+\d{4}/i.test(subject) ||
+        /hackathon/i.test(subject) ||
+        /training/i.test(subject) ||
+        /dare2compete/i.test(fromLower) ||
+        /internshala/i.test(fromLower)
+    )) {
+        result.category = 'OTHER';
+    }
+
+    // Wellfound digest shouldn't be INTERVIEW/OFFER even if body mentions companies
+    if ((result.category === 'INTERVIEW' || result.category === 'OFFER') &&
+        /wellfound/i.test(fromLower) &&
+        /more matches/i.test(subject)) {
+        result.category = 'OTHER';
+    }
+
+    // --- WORK MODE guardrails ---
+    if (result.work_mode === 'UNKNOWN') {
+        const textToCheck = `${result.role} ${subject}`.toLowerCase();
+        if (textToCheck.includes('remote') || textToCheck.includes('work from home') || textToCheck.includes('wfh')) {
+            result.work_mode = 'REMOTE';
+        } else if (textToCheck.includes('hybrid')) {
+            result.work_mode = 'HYBRID';
+        } else if (textToCheck.includes('onsite') || textToCheck.includes('on-site')) {
+            result.work_mode = 'ONSITE';
+        }
+    }
+
+    // Log any corrections
+    if (result.category !== original) {
+        logger.info(`Guardrail: ${original} → ${result.category}`, {
+            emailId: email.id,
+            subject: subject.slice(0, 100),
+        });
+    }
+
+    return result;
 }
 
 function parseClassification(raw: string): ClassificationResult | null {
@@ -335,7 +536,7 @@ function parseClassification(raw: string): ClassificationResult | null {
         };
         let category = String(parsed.category || '').toUpperCase();
         if (!validCategories.includes(category) && categoryRemap[category]) {
-            logger.warn(`Remapped invalid category "${category}" → "${categoryRemap[category]}"`); 
+            logger.warn(`Remapped invalid category "${category}" → "${categoryRemap[category]}"`);
             category = categoryRemap[category];
         }
 
@@ -343,12 +544,31 @@ function parseClassification(raw: string): ClassificationResult | null {
             return null;
         }
 
+        let role = String(parsed.role || '').trim();
+        if (/^(unknown role|unknown|n\/a|not applicable|not specified|-)$/i.test(role)) {
+            role = '';
+        }
+
+        let jobType = validJobTypes.includes(parsed.job_type) ? parsed.job_type : 'UNKNOWN';
+
+        // If LLM says UNKNOWN but we have a role, try to infer it or default to FULL_TIME
+        if (jobType === 'UNKNOWN' && role) {
+            const roleLower = role.toLowerCase();
+            if (roleLower.includes('intern') || roleLower.includes('trainee') || roleLower.includes('student')) {
+                jobType = 'INTERNSHIP';
+            } else if (roleLower.includes('contract') || roleLower.includes('freelance')) {
+                jobType = 'CONTRACT';
+            } else {
+                jobType = 'FULL_TIME'; // Default to full time if there's a real role
+            }
+        }
+
         return {
             category: category as ClassificationResult['category'],
             company: String(parsed.company || '').trim(),
-            role: String(parsed.role || '').trim(),
+            role: role,
             interview_date: String(parsed.interview_date || ''),
-            job_type: validJobTypes.includes(parsed.job_type) ? parsed.job_type : 'UNKNOWN',
+            job_type: jobType,
             work_mode: validWorkModes.includes(parsed.work_mode) ? parsed.work_mode : 'UNKNOWN',
             source_platform: String(parsed.source_platform || ''),
             confidence: typeof parsed.confidence === 'number' ? Math.min(1, Math.max(0, parsed.confidence)) : 0,

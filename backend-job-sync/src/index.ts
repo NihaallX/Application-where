@@ -302,4 +302,11 @@ async function main() {
     }
 }
 
-main();
+export async function runSync() {
+    return main();
+}
+
+// Only run automatically if this file is the entry point
+if (require.main === module) {
+    main();
+}
