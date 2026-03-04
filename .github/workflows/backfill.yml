@@ -3,8 +3,8 @@ name: Backfill Job Emails
 # Runs daily at 1:00 AM IST (19:30 UTC)
 # Also triggerable manually from the Actions tab
 on:
-  schedule:
-    - cron: '30 19 * * *'
+  # schedule:              # PAUSED — re-enable when new Groq keys are set
+  #   - cron: '30 19 * * *'
   workflow_dispatch:
     inputs:
       reason:
