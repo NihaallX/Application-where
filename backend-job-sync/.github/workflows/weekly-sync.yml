@@ -1,8 +1,8 @@
 name: Weekly Job Email Sync
 
 on:
-  schedule:
-    - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
+  # schedule:              # PAUSED — re-enable when new Groq keys are set
+  #   - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
